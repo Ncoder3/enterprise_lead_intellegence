@@ -1,4 +1,4 @@
-from src.scraping.http_client import fetch_page
+from src.scraping.http_client import HTTPClient
 from src.scraping.lead_parser import (
     find_next_page,
     parse_leads,
@@ -7,14 +7,27 @@ from src.scraping.lead_parser import (
 
 class LeadScraper:
 
-    def __init__(self, start_url: str):
+    def __init__(
+        self,
+        start_url: str,
+        http_client: HTTPClient | None = None,
+    ):
         self.start_url = start_url
 
-    def scrape_page(self, url: str) -> tuple[list[dict], str | None]:
+        self.http_client = (
+            http_client
+            if http_client is not None
+            else HTTPClient()
+        )
+
+    def scrape_page(
+        self,
+        url: str,
+    ) -> tuple[list[dict], str | None]:
 
         print(f"[SCRAPER] Fetching: {url}")
 
-        html = fetch_page(url)
+        html = self.http_client.get(url)
 
         leads = parse_leads(html)
 
@@ -36,7 +49,8 @@ class LeadScraper:
         while current_url:
 
             print(
-                f"[SCRAPER] Processing page {page_number}"
+                f"[SCRAPER] Processing page "
+                f"{page_number}"
             )
 
             leads, next_url = self.scrape_page(
@@ -44,7 +58,8 @@ class LeadScraper:
             )
 
             print(
-                f"[SCRAPER] Extracted {len(leads)} records"
+                f"[SCRAPER] Extracted "
+                f"{len(leads)} records"
             )
 
             all_leads.extend(leads)
