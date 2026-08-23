@@ -2,26 +2,36 @@ import sys
 from pathlib import Path
 
 # Adds project root (enterprise-lead-intelligence) to Python search path
-sys.path.append(str(Path(__file__).resolve().parents[1]))
-
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from pprint import pprint
-from src.scraping.lead_scraper import scrape_lead_page
+
+from src.scraping.lead_scraper import LeadScraper
 
 
 def main():
 
-    url = "http://127.0.0.1:8000/leads?page=1"
+    start_url = "http://127.0.0.1:8000/leads?page=1"
 
-    leads = scrape_lead_page(url)
+    scraper = LeadScraper(
+        start_url=start_url
+    )
 
+    leads = scraper.scrape_all()
+
+    print()
     print("=" * 70)
-    print(f"Records extracted: {len(leads)}")
+    print("FINAL RESULTS")
     print("=" * 70)
+
+    print(f"Total leads extracted: {len(leads)}")
 
     for index, lead in enumerate(leads, start=1):
 
-        print(f"\nLead #{index}")
+        print()
+        print(f"Lead #{index}")
 
         pprint(lead)
 
