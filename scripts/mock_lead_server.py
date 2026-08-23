@@ -1,7 +1,6 @@
+import html
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
-import html
-
 
 LEADS = [
     {
@@ -138,6 +137,8 @@ LEADS = [
     },
 ]
 
+REQUEST_COUNTS = {}
+
 
 def render_lead(lead):
     return f"""
@@ -185,6 +186,14 @@ class LeadDirectoryHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed_url = urlparse(self.path)
 
+        REQUEST_COUNTS[parsed_url.path] = (
+            REQUEST_COUNTS.get(
+                parsed_url.path,
+                0,
+            )
+            + 1
+        )
+
         if parsed_url.path != "/leads":
             self.send_response(404)
             self.end_headers()
@@ -194,9 +203,38 @@ class LeadDirectoryHandler(BaseHTTPRequestHandler):
         query = parse_qs(parsed_url.query)
 
         try:
-            page = int(query.get("page", ["1"])[0])
+            page = int(
+                query.get(
+                    "page",
+                    ["1"],
+                )[0]
+            )
         except ValueError:
             page = 1
+
+        request_key = f"/leads?page={page}"
+
+        REQUEST_COUNTS[request_key] = (
+            REQUEST_COUNTS.get(
+                request_key,
+                0,
+            )
+            + 1
+        )
+
+        if page == 2 and REQUEST_COUNTS[request_key] <= 2:
+            print("[SERVER] Simulating temporary failure for page 2")
+
+            self.send_response(503)
+            self.send_header(
+                "Content-Type",
+                "text/plain",
+            )
+            self.end_headers()
+
+            self.wfile.write(b"Temporary server failure")
+
+            return
 
         leads_per_page = 4
 
