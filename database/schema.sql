@@ -150,36 +150,8 @@ CREATE TABLE IF NOT EXISTS scrape_pages (
 );
 
 
--- -- =========================================================
--- -- LEADS
--- -- =========================================================
-
--- CREATE TABLE IF NOT EXISTS leads (
---     lead_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
---     person_id UUID NOT NULL REFERENCES people(person_id)
---         ON DELETE CASCADE,
-
---     lead_status VARCHAR(50) NOT NULL DEFAULT 'new',
-
---     icp_score NUMERIC(5,2),
-
---     lead_tier VARCHAR(20),
-
---     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
---     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
---     CONSTRAINT chk_icp_score
---         CHECK (
---             icp_score IS NULL
---             OR (
---                 icp_score >= 0
---                 AND icp_score <= 100
---             )
---         )
--- );
 -- =========================================================
--- LEADS
+-- LEADS (Phase 2H Complete Schema)
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS leads (
@@ -188,19 +160,44 @@ CREATE TABLE IF NOT EXISTS leads (
     source_id UUID REFERENCES sources(source_id),
     run_id UUID REFERENCES scrape_runs(run_id),
 
+    -- Contact Core Data
     first_name VARCHAR(100),
     last_name VARCHAR(100),
     job_title VARCHAR(255),
     email VARCHAR(320) NOT NULL,
 
+    -- Company Core Data
     company_name VARCHAR(255),
     domain VARCHAR(255),
     industry VARCHAR(255),
     country VARCHAR(100),
     employee_count INTEGER,
 
-    email_status VARCHAR(50) NOT NULL DEFAULT 'unverified',
+    -- Identity Matching (Phase 2H)
+    normalized_full_name VARCHAR(255),
+    identity_key VARCHAR(500),
 
+    -- Email Validation Metadata
+    email_status VARCHAR(50) NOT NULL DEFAULT 'unverified',
+    email_validation_status VARCHAR(50),
+    email_validation_reason TEXT,
+    email_mx_valid BOOLEAN,
+    email_is_free_provider BOOLEAN,
+    email_is_disposable BOOLEAN,
+    email_validated_at TIMESTAMPTZ,
+
+    -- Data Quality Scoring (Phase 2H)
+    data_quality_score INTEGER DEFAULT 0,
+    lead_quality_score NUMERIC(5,2),
+    lead_quality VARCHAR(50),
+    quality_reasons TEXT[],
+
+    -- Deduplication Tracking (Phase 2H)
+    duplicate_status VARCHAR(30) DEFAULT 'unique',
+    duplicate_reason TEXT,
+    duplicate_checked_at TIMESTAMPTZ,
+
+    -- Timestamps
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -239,14 +236,11 @@ CREATE INDEX IF NOT EXISTS idx_scrape_runs_status
 CREATE INDEX IF NOT EXISTS idx_scrape_pages_run
     ON scrape_pages(run_id);
 
--- CREATE INDEX IF NOT EXISTS idx_leads_person
---     ON leads(person_id);
-
--- CREATE INDEX IF NOT EXISTS idx_leads_status
---     ON leads(lead_status);
-
--- CREATE INDEX IF NOT EXISTS idx_leads_icp_score
---     ON leads(icp_score);
-
--- ADD THIS NEW DEDUPLICATION INDEX
+-- Phase 2H Lead Bank Indexes
 CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_email_unique ON leads (LOWER(email));
+
+CREATE INDEX IF NOT EXISTS idx_leads_identity_key ON leads(identity_key);
+
+CREATE INDEX IF NOT EXISTS idx_leads_domain ON leads(domain);
+
+CREATE INDEX IF NOT EXISTS idx_leads_quality ON leads(data_quality_score);
