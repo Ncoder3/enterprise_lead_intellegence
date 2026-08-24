@@ -8,6 +8,8 @@ class LeadRepository:
     def upsert_lead(
         self,
         lead: dict,
+        email_validation: dict,
+        quality: dict,
         source_id: UUID | None,
         run_id: UUID,
     ) -> UUID:
@@ -31,12 +33,22 @@ class LeadRepository:
                         domain,
                         industry,
                         country,
-                        employee_count
+                        employee_count,
+                        email_validation_status,
+                        email_validation_reason,
+                        email_mx_valid,
+                        email_is_free_provider,
+                        email_is_disposable,
+                        email_validated_at,
+                        lead_quality_score,
+                        lead_quality,
+                        quality_reasons
                     )
                     VALUES (
                         %s, %s, %s, %s, %s,
                         %s, %s, %s, %s, %s,
-                        %s
+                        %s, %s, %s, %s, %s,
+                        %s, NOW(), %s, %s, %s
                     )
 
                     ON CONFLICT (
@@ -73,6 +85,33 @@ class LeadRepository:
                         employee_count =
                             EXCLUDED.employee_count,
 
+                        email_validation_status =
+                            EXCLUDED.email_validation_status,
+
+                        email_validation_reason =
+                            EXCLUDED.email_validation_reason,
+
+                        email_mx_valid =
+                            EXCLUDED.email_mx_valid,
+
+                        email_is_free_provider =
+                            EXCLUDED.email_is_free_provider,
+
+                        email_is_disposable =
+                            EXCLUDED.email_is_disposable,
+
+                        email_validated_at =
+                            NOW(),
+
+                        lead_quality_score =
+                            EXCLUDED.lead_quality_score,
+
+                        lead_quality =
+                            EXCLUDED.lead_quality,
+
+                        quality_reasons =
+                            EXCLUDED.quality_reasons,
+
                         last_seen_at = NOW(),
 
                         updated_at = NOW()
@@ -91,6 +130,14 @@ class LeadRepository:
                         lead.get("industry"),
                         lead.get("country"),
                         lead.get("employee_count"),
+                        email_validation.get("status"),
+                        email_validation.get("reason"),
+                        email_validation.get("mx_valid"),
+                        email_validation.get("is_free_provider"),
+                        email_validation.get("is_disposable"),
+                        quality.get("score"),
+                        quality.get("quality"),
+                        quality.get("reasons"),
                     ),
                 )
 

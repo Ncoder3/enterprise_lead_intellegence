@@ -2,7 +2,13 @@ from src.database.lead_repository import LeadRepository
 from src.database.scrape_run_repository import (
     ScrapeRunRepository,
 )
+from src.processing.email_validator import (
+    validate_email,
+)
 from src.processing.lead_normalizer import normalize_lead
+from src.processing.lead_quality import (
+    calculate_lead_quality,
+)
 from src.processing.lead_validator import validate_lead
 from src.scraping.http_client import HTTPClient
 from src.scraping.lead_parser import (
@@ -110,9 +116,28 @@ class LeadScraper:
 
                             continue
 
+                        email_validation = validate_email(
+                            normalized_lead.get("email")
+                        )
+
+                        quality = calculate_lead_quality(
+                            normalized_lead,
+                            email_validation,
+                        )
+
+                        print(
+                            "[QUALITY] "
+                            f"{normalized_lead.get('email')} | "
+                            f"{email_validation['status']} | "
+                            f"score={quality['score']} | "
+                            f"{quality['quality']}"
+                        )
+
                         lead_id = (
                             self.lead_repository.upsert_lead(
                                 normalized_lead,
+                                email_validation,
+                                quality,
                                 source_id=None,
                                 run_id=run_id,
                             )
