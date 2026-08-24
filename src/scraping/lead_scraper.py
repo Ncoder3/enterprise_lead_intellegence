@@ -1,6 +1,9 @@
+from src.database.lead_repository import LeadRepository
 from src.database.scrape_run_repository import (
     ScrapeRunRepository,
 )
+from src.processing.lead_normalizer import normalize_lead
+from src.processing.lead_validator import validate_lead
 from src.scraping.http_client import HTTPClient
 from src.scraping.lead_parser import (
     find_next_page,
@@ -15,6 +18,7 @@ class LeadScraper:
         start_url: str,
         http_client: HTTPClient | None = None,
         run_repository: ScrapeRunRepository | None = None,
+        lead_repository: LeadRepository | None = None,
     ):
         self.start_url = start_url
 
@@ -28,6 +32,12 @@ class LeadScraper:
             run_repository
             if run_repository is not None
             else ScrapeRunRepository()
+        )
+
+        self.lead_repository = (
+            lead_repository
+            if lead_repository is not None
+            else LeadRepository()
         )
 
     def scrape_all(self) -> list[dict]:
@@ -79,7 +89,42 @@ class LeadScraper:
                         current_url,
                     )
 
-                    all_leads.extend(leads)
+                    page_processed_leads = []
+
+                    for raw_lead in leads:
+
+                        normalized_lead = normalize_lead(
+                            raw_lead
+                        )
+
+                        is_valid, errors = validate_lead(
+                            normalized_lead
+                        )
+
+                        if not is_valid:
+
+                            print(
+                                f"[LEAD] Validation failed: "
+                                f"{errors}"
+                            )
+
+                            continue
+
+                        lead_id = (
+                            self.lead_repository.upsert_lead(
+                                normalized_lead,
+                                source_id=None,
+                                run_id=run_id,
+                            )
+                        )
+
+                        print(
+                            f"[LEAD] Stored: {lead_id}"
+                        )
+
+                        page_processed_leads.append(normalized_lead)
+
+                    all_leads.extend(page_processed_leads)
 
                     pages_succeeded += 1
 
@@ -94,7 +139,7 @@ class LeadScraper:
                     print(
                         f"[SCRAPER] Page "
                         f"{page_number} → "
-                        f"{len(leads)} records"
+                        f"{len(page_processed_leads)} valid records processed"
                     )
 
                     current_url = next_url
