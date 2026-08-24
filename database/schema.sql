@@ -5,7 +5,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- SOURCES
 -- =========================================================
 
-CREATE TABLE sources (
+CREATE TABLE IF NOT EXISTS sources (
     source_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     source_name VARCHAR(100) NOT NULL,
     source_type VARCHAR(50) NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE sources (
 -- COMPANIES
 -- =========================================================
 
-CREATE TABLE companies (
+CREATE TABLE IF NOT EXISTS companies (
     company_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     company_name VARCHAR(255) NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE companies (
 -- PEOPLE
 -- =========================================================
 
-CREATE TABLE people (
+CREATE TABLE IF NOT EXISTS people (
     person_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     company_id UUID REFERENCES companies(company_id)
@@ -67,7 +67,7 @@ CREATE TABLE people (
 -- EMAILS
 -- =========================================================
 
-CREATE TABLE emails (
+CREATE TABLE IF NOT EXISTS emails (
     email_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     person_id UUID NOT NULL REFERENCES people(person_id)
@@ -100,7 +100,7 @@ CREATE TABLE emails (
 -- SCRAPE RUNS
 -- =========================================================
 
-CREATE TABLE scrape_runs (
+CREATE TABLE IF NOT EXISTS scrape_runs (
     run_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     source_id UUID REFERENCES sources(source_id),
@@ -110,11 +110,43 @@ CREATE TABLE scrape_runs (
 
     status VARCHAR(30) NOT NULL DEFAULT 'running',
 
-    records_found INTEGER NOT NULL DEFAULT 0,
-    records_processed INTEGER NOT NULL DEFAULT 0,
+    pages_attempted INTEGER NOT NULL DEFAULT 0,
+    pages_succeeded INTEGER NOT NULL DEFAULT 0,
+
+    records_extracted INTEGER NOT NULL DEFAULT 0,
     records_failed INTEGER NOT NULL DEFAULT 0,
 
-    error_message TEXT
+    error_message TEXT,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- =========================================================
+-- SCRAPE PAGES
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS scrape_pages (
+    page_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+    run_id UUID NOT NULL
+        REFERENCES scrape_runs(run_id)
+        ON DELETE CASCADE,
+
+    page_number INTEGER NOT NULL,
+
+    page_url TEXT NOT NULL,
+
+    status VARCHAR(30) NOT NULL,
+
+    records_extracted INTEGER NOT NULL DEFAULT 0,
+
+    error_message TEXT,
+
+    started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    finished_at TIMESTAMPTZ,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 
@@ -122,7 +154,7 @@ CREATE TABLE scrape_runs (
 -- LEADS
 -- =========================================================
 
-CREATE TABLE leads (
+CREATE TABLE IF NOT EXISTS leads (
     lead_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     person_id UUID NOT NULL REFERENCES people(person_id)
@@ -152,35 +184,38 @@ CREATE TABLE leads (
 -- INDEXES
 -- =========================================================
 
-CREATE INDEX idx_companies_domain
+CREATE INDEX IF NOT EXISTS idx_companies_domain
     ON companies(domain);
 
-CREATE INDEX idx_companies_industry
+CREATE INDEX IF NOT EXISTS idx_companies_industry
     ON companies(industry);
 
-CREATE INDEX idx_people_company
+CREATE INDEX IF NOT EXISTS idx_people_company
     ON people(company_id);
 
-CREATE INDEX idx_people_job_title
+CREATE INDEX IF NOT EXISTS idx_people_job_title
     ON people(job_title);
 
-CREATE INDEX idx_emails_email
+CREATE INDEX IF NOT EXISTS idx_emails_email
     ON emails(email);
 
-CREATE INDEX idx_emails_status
+CREATE INDEX IF NOT EXISTS idx_emails_status
     ON emails(verification_status);
 
-CREATE INDEX idx_scrape_runs_source
+CREATE INDEX IF NOT EXISTS idx_scrape_runs_source
     ON scrape_runs(source_id);
 
-CREATE INDEX idx_scrape_runs_status
+CREATE INDEX IF NOT EXISTS idx_scrape_runs_status
     ON scrape_runs(status);
 
-CREATE INDEX idx_leads_person
+CREATE INDEX IF NOT EXISTS idx_scrape_pages_run
+    ON scrape_pages(run_id);
+
+CREATE INDEX IF NOT EXISTS idx_leads_person
     ON leads(person_id);
 
-CREATE INDEX idx_leads_status
+CREATE INDEX IF NOT EXISTS idx_leads_status
     ON leads(lead_status);
 
-CREATE INDEX idx_leads_icp_score
+CREATE INDEX IF NOT EXISTS idx_leads_icp_score
     ON leads(icp_score);

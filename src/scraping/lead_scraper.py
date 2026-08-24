@@ -1,3 +1,6 @@
+from src.database.scrape_run_repository import (
+    ScrapeRunRepository,
+)
 from src.scraping.http_client import HTTPClient
 from src.scraping.lead_parser import (
     find_next_page,
@@ -11,6 +14,7 @@ class LeadScraper:
         self,
         start_url: str,
         http_client: HTTPClient | None = None,
+        run_repository: ScrapeRunRepository | None = None,
     ):
         self.start_url = start_url
 
@@ -20,25 +24,19 @@ class LeadScraper:
             else HTTPClient()
         )
 
-    def scrape_page(
-        self,
-        url: str,
-    ) -> tuple[list[dict], str | None]:
-
-        print(f"[SCRAPER] Fetching: {url}")
-
-        html = self.http_client.get(url)
-
-        leads = parse_leads(html)
-
-        next_url = find_next_page(
-            html,
-            url,
+        self.run_repository = (
+            run_repository
+            if run_repository is not None
+            else ScrapeRunRepository()
         )
 
-        return leads, next_url
-
     def scrape_all(self) -> list[dict]:
+
+        run_id = self.run_repository.create_run()
+
+        print(
+            f"[SCRAPER] Started run: {run_id}"
+        )
 
         current_url = self.start_url
 
@@ -46,31 +44,106 @@ class LeadScraper:
 
         page_number = 1
 
-        while current_url:
+        pages_attempted = 0
+        pages_succeeded = 0
+
+        try:
+
+            while current_url:
+
+                pages_attempted += 1
+
+                print(
+                    f"[SCRAPER] Processing page "
+                    f"{page_number}"
+                )
+
+                page_id = (
+                    self.run_repository.create_page(
+                        run_id,
+                        page_number,
+                        current_url,
+                    )
+                )
+
+                try:
+
+                    html = self.http_client.get(
+                        current_url
+                    )
+
+                    leads = parse_leads(html)
+
+                    next_url = find_next_page(
+                        html,
+                        current_url,
+                    )
+
+                    all_leads.extend(leads)
+
+                    pages_succeeded += 1
+
+                    self.run_repository.update_page(
+                        page_id,
+                        status="completed",
+                        records_extracted=len(
+                            leads
+                        ),
+                    )
+
+                    print(
+                        f"[SCRAPER] Page "
+                        f"{page_number} → "
+                        f"{len(leads)} records"
+                    )
+
+                    current_url = next_url
+
+                    page_number += 1
+
+                except Exception as exc:
+
+                    self.run_repository.update_page(
+                        page_id,
+                        status="failed",
+                        error_message=str(exc),
+                    )
+
+                    raise
+
+            self.run_repository.update_run(
+                run_id,
+                status="completed",
+                pages_attempted=pages_attempted,
+                pages_succeeded=pages_succeeded,
+                records_extracted=len(
+                    all_leads
+                ),
+            )
 
             print(
-                f"[SCRAPER] Processing page "
-                f"{page_number}"
+                f"[SCRAPER] Run completed: "
+                f"{run_id}"
             )
 
-            leads, next_url = self.scrape_page(
-                current_url
+            return all_leads
+
+        except Exception as exc:
+
+            self.run_repository.update_run(
+                run_id,
+                status="failed",
+                pages_attempted=pages_attempted,
+                pages_succeeded=pages_succeeded,
+                records_extracted=len(
+                    all_leads
+                ),
+                error_message=str(exc),
             )
 
             print(
-                f"[SCRAPER] Extracted "
-                f"{len(leads)} records"
+                f"[SCRAPER] Run failed: "
+                f"{run_id}"
             )
 
-            all_leads.extend(leads)
-
-            current_url = next_url
-
-            page_number += 1
-
-        print(
-            f"[SCRAPER] Finished. "
-            f"Total records: {len(all_leads)}"
-        )
-
-        return all_leads
+            raise
