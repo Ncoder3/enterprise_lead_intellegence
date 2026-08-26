@@ -68,6 +68,12 @@ class LeadProcessor:
             )
         )
 
+        # -------------------------
+        # 5. Determine Validity
+        # -------------------------
+        # Check if the email validation status indicates a valid record
+        is_valid = email_validation.get("status") == "valid"
+
         return {
             "lead": lead,
 
@@ -82,4 +88,7 @@ class LeadProcessor:
 
             "quality":
                 quality,
+
+            "is_valid": 
+                is_valid,
         }

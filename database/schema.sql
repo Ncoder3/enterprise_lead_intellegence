@@ -204,6 +204,25 @@ CREATE TABLE IF NOT EXISTS leads (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Phase 2j fo rthe observbility of each step
+
+CREATE TABLE IF NOT EXISTS run_metrics (
+    run_id UUID PRIMARY KEY REFERENCES scrape_runs(run_id) ON DELETE CASCADE,
+    records_discovered INT DEFAULT 0,
+    records_normalized INT DEFAULT 0,
+    records_valid INT DEFAULT 0,
+    records_invalid INT DEFAULT 0,
+    high_quality_leads INT DEFAULT 0,
+    medium_quality_leads INT DEFAULT 0,
+    low_quality_leads INT DEFAULT 0,
+    duplicates_detected INT DEFAULT 0,
+    records_merged INT DEFAULT 0,
+    records_reviewed INT DEFAULT 0,
+    records_inserted INT DEFAULT 0,
+    records_updated INT DEFAULT 0,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 
 -- =========================================================
 -- INDEXES

@@ -5,3 +5,4 @@ pydantic-settings
 requests
 beautifulsoup4
 lxml
+rapidfuzz

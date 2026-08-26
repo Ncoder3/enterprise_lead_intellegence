@@ -1,4 +1,5 @@
 from uuid import UUID
+
 from src.database.connection import get_connection
 
 
@@ -9,7 +10,7 @@ class LeadRepository:
         processed: dict,
         source_id: UUID | None,
         run_id: UUID,
-    ) -> UUID:
+    ) -> str:
         lead = processed["lead"]
         email_validation = processed["email_validation"]
         quality = processed["quality"]
@@ -82,7 +83,7 @@ class LeadRepository:
                         duplicate_status = EXCLUDED.duplicate_status,
                         last_seen_at = NOW(),
                         updated_at = NOW()
-                    RETURNING lead_id;
+                    RETURNING lead_id, (xmax = 0) AS is_inserted;
                     """,
                     (
                         source_id,
@@ -111,10 +112,12 @@ class LeadRepository:
                     ),
                 )
 
-                lead_id = cursor.fetchone()[0]
+                row = cursor.fetchone()
+                lead_id = row[0]
+                is_inserted = row[1]
 
             connection.commit()
-            return lead_id
+            return "inserted" if is_inserted else "updated"
 
         finally:
             connection.close()

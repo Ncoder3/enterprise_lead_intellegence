@@ -2,6 +2,9 @@ from datetime import datetime
 from uuid import UUID
 
 from src.database.connection import get_connection
+from src.database.run_metrics_repository import (
+    RunMetricsRepository,
+)
 
 
 class ScrapeRunRepository:
@@ -14,9 +17,7 @@ class ScrapeRunRepository:
         connection = get_connection()
 
         try:
-
             with connection.cursor() as cursor:
-
                 cursor.execute(
                     """
                     INSERT INTO scrape_runs (
@@ -34,12 +35,17 @@ class ScrapeRunRepository:
 
                 run_id = cursor.fetchone()[0]
 
+            # Commit immediately so the run_id is saved globally in PostgreSQL
             connection.commit()
-
-            return run_id
 
         finally:
             connection.close()
+
+        # Initialize metrics using a separate connection after the parent transaction is committed
+        metrics_repository = RunMetricsRepository()
+        metrics_repository.initialize(run_id)
+
+        return run_id
 
     def update_run(
         self,
@@ -56,9 +62,7 @@ class ScrapeRunRepository:
         connection = get_connection()
 
         try:
-
             with connection.cursor() as cursor:
-
                 cursor.execute(
                     """
                     UPDATE scrape_runs
@@ -98,9 +102,7 @@ class ScrapeRunRepository:
         connection = get_connection()
 
         try:
-
             with connection.cursor() as cursor:
-
                 cursor.execute(
                     """
                     INSERT INTO scrape_pages (
@@ -145,9 +147,7 @@ class ScrapeRunRepository:
         connection = get_connection()
 
         try:
-
             with connection.cursor() as cursor:
-
                 cursor.execute(
                     """
                     UPDATE scrape_pages
