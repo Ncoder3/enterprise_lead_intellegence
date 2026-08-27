@@ -6,6 +6,7 @@ from concurrent.futures import (
 from src.scraping.page_worker import (
     PageJob,
     PageResult,
+    fetch_page,
 )
 
 
@@ -13,15 +14,16 @@ class ConcurrentPageRunner:
 
     def __init__(
         self,
-        max_workers: int = 5,
+        http_get,
+        max_workers: int = 3,
     ):
 
+        self.http_get = http_get
         self.max_workers = max_workers
 
     def run(
         self,
         jobs: list[PageJob],
-        worker_function,
     ) -> list[PageResult]:
 
         results = []
@@ -32,15 +34,14 @@ class ConcurrentPageRunner:
 
             futures = {
                 executor.submit(
-                    worker_function,
+                    fetch_page,
                     job,
+                    self.http_get,
                 ): job
                 for job in jobs
             }
 
-            for future in as_completed(
-                futures
-            ):
+            for future in as_completed(futures):
 
                 job = futures[future]
 
@@ -52,10 +53,15 @@ class ConcurrentPageRunner:
 
                 except Exception as exc:
 
-                    print(
-                        f"[WORKER ERROR] "
-                        f"Page {job.page_number}: "
-                        f"{exc}"
+                    results.append(
+                        PageResult(
+                            page_number=job.page_number,
+                            page_url=job.page_url,
+                            error=exc,
+                        )
                     )
 
-        return results
+        return sorted(
+            results,
+            key=lambda result: result.page_number,
+        )

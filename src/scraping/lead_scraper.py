@@ -4,6 +4,8 @@ from src.processing.lead_processor import LeadProcessor
 from src.processing.lead_validator import validate_lead
 from src.scraping.http_client import HTTPClient
 from src.scraping.lead_parser import find_next_page, parse_leads
+from src.scraping.page_worker import PageJob
+from src.scraping.concurrent_runner import ConcurrentPageRunner
 
 
 class LeadScraper:
@@ -15,36 +17,71 @@ class LeadScraper:
         run_repository: ScrapeRunRepository | None = None,
         lead_repository: LeadRepository | None = None,
         processor: LeadProcessor | None = None,
+        max_workers: int = 3,
     ):
         self.start_url = start_url
         self.http_client = http_client if http_client is not None else HTTPClient()
         self.run_repository = run_repository if run_repository is not None else ScrapeRunRepository()
         self.lead_repository = lead_repository if lead_repository is not None else LeadRepository()
         self.processor = processor if processor is not None else LeadProcessor()
+        
+        # Connect existing http_client.get to the runner
+        self.concurrent_runner = ConcurrentPageRunner(
+            http_get=self.http_client.get,
+            max_workers=max_workers,
+        )
 
     def scrape_all(self) -> list[dict]:
         run_id = self.run_repository.create_run()
         print(f"[SCRAPER] Started run: {run_id}")
 
-        current_url = self.start_url
         all_leads = []
-        page_number = 1
         pages_attempted = 0
         pages_succeeded = 0
 
         try:
-            while current_url:
-                pages_attempted += 1
-                print(f"[SCRAPER] Processing page {page_number}")
+            # 1. Page Link Discovery Phase (or pre-generate known page URLs)
+            # Fetch target page URLs to build jobs array
+            discovered_urls = []
+            curr_url = self.start_url
+            
+            while curr_url:
+                discovered_urls.append(curr_url)
+                # Fetch minimal header/page to discover next page if dynamic
+                html = self.http_client.get(curr_url)
+                curr_url = find_next_page(html, curr_url)
 
+            # 2. Build jobs for Concurrent Acquisition
+            jobs = [
+                PageJob(page_number=idx + 1, page_url=url)
+                for idx, url in enumerate(discovered_urls)
+            ]
+
+            # 3. Concurrent Page Acquisition Phase
+            print(f"[SCRAPER] Fetching {len(jobs)} pages concurrently...")
+            results = self.concurrent_runner.run(jobs)
+
+            # 4. Sequential Processing, Validation & Persistence Phase
+            for result in results:
+                pages_attempted += 1
+                page_number = result.page_number
+                
+                print(f"[SCRAPER] Processing results for page {page_number}")
                 page_id = self.run_repository.create_page(
-                    run_id, page_number, current_url
+                    run_id, page_number, result.page_url
                 )
 
+                if result.error:
+                    print(f"[SCRAPER] Page {page_number} failed: {result.error}")
+                    self.run_repository.update_page(
+                        page_id,
+                        status="failed",
+                        error_message=str(result.error),
+                    )
+                    continue
+
                 try:
-                    html = self.http_client.get(current_url)
-                    leads = parse_leads(html)
-                    next_url = find_next_page(html, current_url)
+                    leads = parse_leads(result.html)
                     page_processed_leads = []
 
                     for raw_lead in leads:
@@ -88,9 +125,6 @@ class LeadScraper:
                         f"[SCRAPER] Page {page_number} -> "
                         f"{len(page_processed_leads)} valid records processed"
                     )
-
-                    current_url = next_url
-                    page_number += 1
 
                 except Exception as exc:
                     self.run_repository.update_page(
