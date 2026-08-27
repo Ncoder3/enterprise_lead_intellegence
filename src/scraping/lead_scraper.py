@@ -85,7 +85,7 @@ class LeadScraper:
                     )
 
                     print(
-                        f"[SCRAPER] Page {page_number} → "
+                        f"[SCRAPER] Page {page_number} -> "
                         f"{len(page_processed_leads)} valid records processed"
                     )
 
