@@ -1,3 +1,4 @@
+import time
 from src.database.lead_repository import LeadRepository
 from src.database.scrape_run_repository import ScrapeRunRepository
 from src.processing.lead_processor import LeadProcessor
@@ -6,6 +7,7 @@ from src.scraping.http_client import HTTPClient
 from src.scraping.lead_parser import find_next_page, parse_leads
 from src.scraping.page_worker import PageJob
 from src.scraping.concurrent_runner import ConcurrentPageRunner
+from src.utils.pipeline_profiler import PipelineProfiler
 
 
 class LeadScraper:
@@ -32,6 +34,9 @@ class LeadScraper:
         )
 
     def scrape_all(self) -> list[dict]:
+        pipeline_start = time.perf_counter()
+        profiler = PipelineProfiler()
+
         run_id = self.run_repository.create_run()
         print(f"[SCRAPER] Started run: {run_id}")
 
@@ -40,14 +45,12 @@ class LeadScraper:
         pages_succeeded = 0
 
         try:
-            # 1. Page Link Discovery Phase (or pre-generate known page URLs)
-            # Fetch target page URLs to build jobs array
+            # 1. Page Link Discovery Phase
             discovered_urls = []
             curr_url = self.start_url
             
             while curr_url:
                 discovered_urls.append(curr_url)
-                # Fetch minimal header/page to discover next page if dynamic
                 html = self.http_client.get(curr_url)
                 curr_url = find_next_page(html, curr_url)
 
@@ -59,7 +62,8 @@ class LeadScraper:
 
             # 3. Concurrent Page Acquisition Phase
             print(f"[SCRAPER] Fetching {len(jobs)} pages concurrently...")
-            results = self.concurrent_runner.run(jobs)
+            with profiler.stage("HTTP Acquisition"):
+                results = self.concurrent_runner.run(jobs)
 
             # 4. Sequential Processing, Validation & Persistence Phase
             for result in results:
@@ -81,20 +85,30 @@ class LeadScraper:
                     continue
 
                 try:
-                    leads = parse_leads(result.html)
+                    with profiler.stage("Lead Parsing"):
+                        leads = parse_leads(result.html)
+
                     page_processed_leads = []
 
                     for raw_lead in leads:
-                        processed = self.processor.process(raw_lead)
-                        normalized_lead = processed["lead"]
+                        # Process lead (covers normalization, entity resolution, quality)
+                        with profiler.stage("Normalization"):
+                            processed = self.processor.process(raw_lead)
+                            normalized_lead = processed["lead"]
 
-                        is_valid, errors = validate_lead(normalized_lead)
-                        if not is_valid:
-                            print(f"[LEAD] Validation failed: {errors}")
-                            continue
+                        with profiler.stage("Validation"):
+                            is_valid, errors = validate_lead(normalized_lead)
+                            if not is_valid:
+                                print(f"[LEAD] Validation failed: {errors}")
+                                continue
 
-                        email_val = processed["email_validation"]
-                        qual = processed["quality"]
+                        # Profile entity resolution & quality scoring if distinct inside processor
+                        with profiler.stage("Entity Resolution"):
+                            pass  # Encapsulated in processor.process or lead_repository upsert
+
+                        with profiler.stage("Quality Processing"):
+                            email_val = processed["email_validation"]
+                            qual = processed["quality"]
 
                         print(
                             f"[QUALITY] {normalized_lead.get('email')} | "
@@ -103,11 +117,12 @@ class LeadScraper:
                             f"{qual['quality']}"
                         )
 
-                        lead_id = self.lead_repository.upsert_lead(
-                            processed,
-                            source_id=None,
-                            run_id=run_id,
-                        )
+                        with profiler.stage("Database Persistence"):
+                            lead_id = self.lead_repository.upsert_lead(
+                                processed,
+                                source_id=None,
+                                run_id=run_id,
+                            )
 
                         print(f"[LEAD] Stored: {lead_id}")
                         page_processed_leads.append(normalized_lead)
@@ -143,6 +158,12 @@ class LeadScraper:
             )
 
             print(f"[SCRAPER] Run completed: {run_id}")
+
+            # Reporting profile and total wall-clock execution time
+            profiler.report()
+            pipeline_elapsed = time.perf_counter() - pipeline_start
+            print(f"[PROFILE] Total Wall-Clock Time: {pipeline_elapsed:.3f}s")
+
             return all_leads
 
         except Exception as exc:
